@@ -88,16 +88,16 @@ jobs:
           }
           
           echo "=== Copying SusFS KernelSU patch ==="
-          cp /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ../KernelSU-Next/
+          cp /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch KernelSU-Next/
           
           echo "=== Applying SusFS KernelSU patch ==="
-          cd ../KernelSU-Next
+          cd KernelSU-Next
           git apply --stat 10_enable_susfs_for_ksu.patch || true
           git apply 10_enable_susfs_for_ksu.patch || {
             echo "=== KernelSU patch did not apply cleanly, trying with --reject ==="
             git apply --reject 10_enable_susfs_for_ksu.patch || true
           }
-          cd ../common
+          cd ..
           
           echo "=== SusFS patches applied ==="
           ls -la fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
