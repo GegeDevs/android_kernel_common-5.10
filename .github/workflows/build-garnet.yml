@@ -26,30 +26,38 @@ jobs:
             libncurses-dev libssl-dev python3 python3-pip \
             python3-venv rsync schedtool squashfs-tools \
             xsltproc zip libxml2-dev
-      
+
       - name: Setup AOSP Clang
         run: |
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O /tmp/clang.tar.gz
-          mkdir -p ${{ github.workspace }}/clang
-          tar -xf /tmp/clang.tar.gz -C ${{ github.workspace }}/clang
-          echo "${{ github.workspace }}/clang/bin" >> $GITHUB_PATH
-          export PATH="${{ github.workspace }}/clang/bin:$PATH"
-          clang --version
+          git clone --depth 1 -b android12-release \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+            /tmp/clang
+          # Find the specific clang version directory
+          CLANG_DIR=$(find /tmp/clang -maxdepth 1 -name "clang-r*" -type d | head -1)
+          if [ -n "$CLANG_DIR" ]; then
+            echo "$CLANG_DIR/bin" >> $GITHUB_PATH
+            export PATH="$CLANG_DIR/bin:$PATH"
+            clang --version
+          else
+            echo "Clang not found, using system clang"
+          fi
 
       - name: Setup AOSP GCC
         run: |
-          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android12-release.tar.gz -O /tmp/gcc64.tar.gz
-          mkdir -p ${{ github.workspace }}/gcc64
-          tar -xf /tmp/gcc64.tar.gz -C ${{ github.workspace }}/gcc64
+          git clone --depth 1 -b android12-release \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+            /tmp/gcc64
           
-          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/android12-release.tar.gz -O /tmp/gcc32.tar.gz
-          mkdir -p ${{ github.workspace }}/gcc32
-          tar -xf /tmp/gcc32.tar.gz -C ${{ github.workspace }}/gcc32
+          git clone --depth 1 -b android12-release \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
+            /tmp/gcc32
+          
+          echo "/tmp/gcc64/bin" >> $GITHUB_PATH
+          echo "/tmp/gcc32/bin" >> $GITHUB_PATH
 
       - name: Setup KernelSU-Next
-        working-directory: kernel
+        working-directory: kernel/common
         run: |
-          cd common
           echo "=== Downloading KernelSU-Next setup script ==="
           curl -sSLf https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh -o ksu_setup.sh
           echo "=== Running KernelSU-Next setup ==="
@@ -68,15 +76,15 @@ jobs:
           cp /tmp/susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/
           cp /tmp/susfs4ksu/kernel_patches/include/linux/susfs_def.h include/linux/
           
-          echo "=== Copying SusFS KernelSU patch ==="
-          cp /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch KernelSU/
-          
           echo "=== Applying SusFS kernel patch ==="
           git apply --stat /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || true
           git apply /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || {
             echo "=== Patch did not apply cleanly, trying with --reject ==="
             git apply --reject /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || true
           }
+          
+          echo "=== Copying SusFS KernelSU patch ==="
+          cp /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch KernelSU/
           
           echo "=== Applying SusFS KernelSU patch ==="
           cd KernelSU
@@ -101,7 +109,7 @@ jobs:
       - name: Build kernel
         working-directory: kernel/common
         run: |
-          export PATH="${{ github.workspace }}/clang/bin:${{ github.workspace }}/gcc64/bin:${{ github.workspace }}/gcc32/bin:$PATH"
+          export PATH="/tmp/clang/bin:/tmp/gcc64/bin:/tmp/gcc32/bin:$PATH"
           
           echo "=== Starting kernel build ==="
           make ARCH=arm64 \
@@ -128,9 +136,9 @@ jobs:
           cd /tmp/anykernel3
           rm -rf .git
           
-          cp /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/kernel/common/arch/arm64/boot/Image.gz-dtb /tmp/anykernel3/ 2>/dev/null || \
-          cp /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/kernel/common/arch/arm64/boot/Image.lz4 /tmp/anykernel3/ 2>/dev/null || \
-          cp /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/kernel/common/arch/arm64/boot/Image /tmp/anykernel3/ 2>/dev/null || \
+          cp kernel/common/arch/arm64/boot/Image.gz-dtb /tmp/anykernel3/ 2>/dev/null || \
+          cp kernel/common/arch/arm64/boot/Image.lz4 /tmp/anykernel3/ 2>/dev/null || \
+          cp kernel/common/arch/arm64/boot/Image /tmp/anykernel3/ 2>/dev/null || \
           echo "No boot image found"
           
           cd /tmp
@@ -154,7 +162,7 @@ jobs:
             Features:
             - KernelSU-Next (stable)
             - SusFS4KSU support
-            - Built with AOSP Clang r416183b
+            - Built with AOSP Clang
             
             Based on android12-5.10 GKI kernel
         env:
