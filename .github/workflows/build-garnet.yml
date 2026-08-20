@@ -69,9 +69,9 @@ jobs:
           git apply /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
 
           echo "=== Applying SusFS KSU patch ==="
-          cd ../KernelSU-Next
+          cd KernelSU-Next
           git apply /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          cd ../common
+          cd ..
 
           echo "=== SusFS applied ==="
           ls fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
