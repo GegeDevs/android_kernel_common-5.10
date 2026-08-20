@@ -21,9 +21,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            bc bison build-essential ccache clang curl \
-            flex g++-multilib gcc-multilib git libgnome2-0 \
-            libncurses5 libssl-dev python3 python3-pip \
+            bc bison build-essential ccache curl \
+            flex g++-multilib gcc-multilib git \
+            libncurses-dev libssl-dev python3 python3-pip \
             python3-venv rsync schedtool squashfs-tools \
             xsltproc zip libxml2-dev
       
