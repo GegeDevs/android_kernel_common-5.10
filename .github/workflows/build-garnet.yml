@@ -8,10 +8,11 @@ permissions:
 
 env:
   CLANG_VERSION: clang-r416183b
+  KSU_NEXT_REF: v3.1.0-legacy-susfs
 
 jobs:
   build-kernel:
-    name: Build Garnet Kernel (KSU-Next + SusFS)
+    name: Build Garnet Kernel (KSU-Next legacy-susfs + SusFS)
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout kernel source
@@ -47,30 +48,40 @@ jobs:
           test -d "/tmp/clang-repo/${CLANG_VERSION}/bin" || { echo "Clang ${CLANG_VERSION} missing"; exit 1; }
           "/tmp/clang-repo/${CLANG_VERSION}/bin/clang" --version
 
-      - name: Setup KernelSU-Next
-        working-directory: kernel
+      - name: Setup KernelSU-Next (v3.1.0-legacy-susfs)
+        working-directory: kernel/common
         run: |
-          curl -sSLf https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh -o ksu_setup.sh
-          cd common
-          bash ../ksu_setup.sh stable
+          set -e
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+          cd KernelSU-Next
+          git checkout ${KSU_NEXT_REF}
+          echo "KSU-Next version: $(git describe --tags)"
+          cd ..
+
+          # Wire into drivers (same as kernel/setup.sh, but pinned to the tag)
+          ln -sf "$(realpath --relative-to=drivers KernelSU-Next/kernel)" drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || \
+            printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
+          grep -q 'source "drivers/kernelsu/Kconfig"' drivers/Kconfig || \
+            sed -i '/endmenu/i\source "drivers/kernelsu/Kconfig"' drivers/Kconfig
           test -e drivers/kernelsu/Kconfig || { echo "KernelSU-Next symlink missing"; exit 1; }
           echo "=== KernelSU-Next ready ==="
 
-      - name: Apply SusFS4KSU patches
+      - name: Apply SusFS v2.0.0 (vendored @ 5dadad4)
         working-directory: kernel/common
         run: |
-          git clone --depth 1 -b gki-android12-5.10 https://gitlab.com/simonpunk/susfs4ksu.git /tmp/susfs4ksu
-
-          cp /tmp/susfs4ksu/kernel_patches/fs/susfs.c fs/
-          cp /tmp/susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/
-          cp /tmp/susfs4ksu/kernel_patches/include/linux/susfs_def.h include/linux/
+          set -e
+          cp susfs_patches/susfs/fs/susfs.c fs/
+          cp susfs_patches/susfs/include/linux/susfs.h include/linux/
+          cp susfs_patches/susfs/include/linux/susfs_def.h include/linux/
 
           echo "=== Applying SusFS kernel patch ==="
-          git apply /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
+          git apply susfs_patches/susfs/50_add_susfs_in_gki-android12-5.10.patch
 
-          echo "=== Applying SusFS KSU patch ==="
+          echo "=== Adding ksu_handle_vfs_fstat to KSU-Next legacy ksud.c ==="
           cd KernelSU-Next
-          git apply /tmp/susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          git apply ../susfs_patches/susfs/ksu-next-legacy_add_ksu_handle_vfs_fstat.patch
+          grep -q "ksu_handle_vfs_fstat" kernel/ksud.c || { echo "vfs_fstat hook missing"; exit 1; }
           cd ..
 
           echo "=== SusFS applied ==="
@@ -79,8 +90,6 @@ jobs:
       - name: Enable KSU + SusFS in config
         working-directory: kernel/common
         run: |
-          printf 'CONFIG_KSU=y\n' >> arch/arm64/configs/garnet_defconfig
-          printf 'CONFIG_KSU_SUSFS=y\n' >> arch/arm64/configs/garnet_defconfig
           grep -E "^CONFIG_KSU" arch/arm64/configs/garnet_defconfig
 
       - name: Build kernel (Image.lz4 + modules)
@@ -98,6 +107,9 @@ jobs:
 
           echo "=== defconfig ==="
           make O=out garnet_defconfig
+
+          echo "=== verify susfs config took effect ==="
+          grep -E "CONFIG_KSU(_SUSFS)?[= ]|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS_TRY_UMOUNT" out/.config | head -20
 
           echo "=== build ==="
           make O=out -j$(nproc) Image.lz4 modules 2>&1 | tail -n 400
@@ -144,8 +156,8 @@ jobs:
             Custom kernel for Garnet (Redmi Note 13 Pro 5G)
 
             Features:
-            - KernelSU-Next (stable)
-            - SusFS4KSU
+            - KernelSU-Next v3.1.0-legacy-susfs (manual hooks)
+            - SusFS v2.0.0 (gki-android12-5.10 @ 5dadad4)
             - zram (lz4) + zsmalloc modules included
             - Built with AOSP Clang r416183b / LLD
 

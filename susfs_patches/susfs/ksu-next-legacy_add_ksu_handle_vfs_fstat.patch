@@ -1,0 +1,30 @@
+--- a/kernel/ksud.c
++++ b/kernel/ksud.c
+@@ -472,4 +472,27 @@ void ksu_handle_sys_read(unsigned int fd)
+     fput(file);
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS
++/*
++ * SusFS (gki-android12-5.10 @ 5dadad4) calls this from vfs_fstat() to keep the
++ * injected KERNEL_SU_RC visible when init stats /system/etc/init/init.rc.
++ * Mirrors the implementation from susfs4ksu's 10_enable_susfs_for_ksu.patch.
++ */
++void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr)
++{
++    loff_t new_size = *kstat_size_ptr + ksu_rc_len;
++    struct file *file = fget(fd);
++
++    if (!file)
++        return;
++
++    if (is_init_rc(file)) {
++        pr_info("stat init.rc, adding ksu_rc_len: %lld -> %lld\n",
++                *kstat_size_ptr, new_size);
++        *kstat_size_ptr = new_size;
++    }
++    fput(file);
++}
++#endif // #ifdef CONFIG_KSU_SUSFS
++
+ static unsigned int volumedown_pressed_count = 0;
