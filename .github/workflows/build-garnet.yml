@@ -123,19 +123,23 @@ jobs:
         run: |
           set -e
           git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git /tmp/ak3
-          cd /tmp/ak3 && rm -rf .git .github README.md
+          rm -rf /tmp/ak3/.git /tmp/ak3/.github /tmp/ak3/README.md
 
-          cp kernel/common/out/arch/arm64/boot/Image.lz4 .
+          # NOTE: stay at workspace root; use absolute paths into /tmp/ak3
+          cp "${GITHUB_WORKSPACE}/kernel/common/out/arch/arm64/boot/Image.lz4" /tmp/ak3/
 
-          mkdir -p modules/system/lib/modules
-          find kernel/common/out -name "zram.ko" -exec cp {} modules/system/lib/modules/ \;
-          find kernel/common/out -name "zsmalloc.ko" -exec cp {} modules/system/lib/modules/ \;
-          ls -la modules/system/lib/modules/
+          mkdir -p /tmp/ak3/modules/system/lib/modules
+          find "${GITHUB_WORKSPACE}/kernel/common/out" -name "zram.ko" \
+            -exec cp {} /tmp/ak3/modules/system/lib/modules/ \;
+          find "${GITHUB_WORKSPACE}/kernel/common/out" -name "zsmalloc.ko" \
+            -exec cp {} /tmp/ak3/modules/system/lib/modules/ \;
+          ls -la /tmp/ak3/modules/system/lib/modules/
+          test -f /tmp/ak3/modules/system/lib/modules/zram.ko || { echo "FATAL: zram.ko missing"; exit 1; }
 
           # AK3 config: enable module install, label kernel
-          sed -i 's/^do.modules=.*/do.modules=1/' anykernel.sh
-          sed -i 's|^kernel.string=.*|kernel.string=Garnet-KSU-Next-SusFS-5.10|' anykernel.sh
-          grep -E "^(do.modules|kernel.string)" anykernel.sh
+          sed -i 's/^do.modules=.*/do.modules=1/' /tmp/ak3/anykernel.sh
+          sed -i 's|^kernel.string=.*|kernel.string=Garnet-KSU-Next-SusFS-5.10|' /tmp/ak3/anykernel.sh
+          grep -E "^(do.modules|kernel.string)" /tmp/ak3/anykernel.sh
 
           cd /tmp/ak3
           zip -r9 "${GITHUB_WORKSPACE}/AnyKernel3-garnet.zip" . -x ".git*"
